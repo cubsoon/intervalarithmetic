@@ -1,25 +1,38 @@
+# Setting float rounding mode.
+# ----------------------------
+#   Based on:
+#   https://rafaelbarreto.wordpress.com/2009/03/30/controlling-fpu-rounding-modes-with-python/
+
 set_rounding = None
 get_rounding = None
 
 TO_ZERO = None
 TOWARD_MINUS_INF = None
-TOWARD_MINUS_INF = None
+TOWARD_PLUS_INF = None
 TO_NEAREST = None
 
-def _start_libm():
+def _init_libm():
+    """
+    Load libm (fenv.h) rounding mode control functions.
+    """
     global TO_ZERO, TOWARD_MINUS_INF, TOWARD_PLUS_INF, TO_NEAREST
     global set_rounding, get_rounding
     from ctypes import cdll
     from ctypes.util import find_library
     libm = cdll.LoadLibrary(find_library('m'))
     set_rounding, get_rounding = libm.fesetround, libm.fegetround
+    # todo: check if correct arguments for x86_64 architecture
     # x86
     TO_ZERO = 0xc00
     TOWARD_MINUS_INF = 0x400
     TOWARD_PLUS_INF = 0x800
     TO_NEAREST = 0
+    # todo: check if works on linux
 
-def _start_msvcrt():
+def _init_msvcrt():
+    """
+    Load MS Visual Studio C Run-Time Library (float.h) rounding mode control functions.
+    """
     global TO_ZERO, TOWARD_MINUS_INF, TOWARD_PLUS_INF, TO_NEAREST
     global set_rounding, get_rounding
     from ctypes import cdll
@@ -31,28 +44,29 @@ def _start_msvcrt():
     TOWARD_PLUS_INF = 0x200
     TO_NEAREST = 0
 
-for _start_rounding in _start_libm, _start_msvcrt:
+for _init_rounding in _init_libm, _init_msvcrt:
     try:
-        _start_rounding()
+        _init_rounding()
         break
     except:
         pass
 else:
-    raise RuntimeError("Could not start FPU mode change module.")
+    raise RuntimeError("Could not load rounding mode control functions.")
+
+# Interval class.
+# ---------------
 
 class Interval:
-    """
-    Class of objects representing real numbers as intervals between two machine numbers.
-    """
 
     def __init__(self, left=None, right=None, value=None, strict=False):
-        # default rounding (not using while creating interval)
-        # use decimal as exact value holder
+        # use Decimal as exact value holder (because of arbitrary precision)
         from decimal import Decimal
+        # nextafter(x, y) returns next machine number after x in direction of y
         from numpy import nextafter
 
         self.strict = strict
 
+        # creating interval from middle value
         if value and (not left) and (not right):
             exact = Decimal(value)
             float_repr = Decimal("{0:0.70f}".format(float(exact)))
@@ -65,6 +79,7 @@ class Interval:
             elif exact < float_repr:
                 self.rv = float(float_repr)
                 self.lv = nextafter(self.rv, -float('Inf'))
+        # creating interval from left and right edge
         elif (not value) and left and right:
             exact_left = Decimal(left)
             exact_right = Decimal(right)
@@ -80,13 +95,17 @@ class Interval:
                 self.rv = nextafter(float(float_repr_right), float('Inf'))
             else:
                 self.rv = float(float_repr_right)
-        elif (not value) and (not left) and (not right):
-            self.lv = 0.0
-            self.rv = 0.0
+        # wrong arguments supplied
         else:
             raise ValueError("Wrong arguments passed while creating interval.")
 
     def _process_other(self, other):
+        """
+        Helper method for overloaded operators.
+        Will try to create Interval from other value if self.strict is false.
+        :param other: numeric value or interval
+        :return: other value as interval (if possible)
+        """
         if isinstance(other, Interval):
             return other
         elif not self.strict:
@@ -96,6 +115,10 @@ class Interval:
                 raise ValueError("Can't use other value from overloaded operator as numeric.")
         else:
             raise ValueError("Can't use overloaded operator with non-interval in strict mode.")
+
+    # Operators' overloading.
+    # Operations can be mixed with other numeric types
+    #   interval is in non-strict mode.
 
     def __add__(self, other):
         return Interval.iadd(self, self._process_other(other))
@@ -121,12 +144,11 @@ class Interval:
     def __rtruediv__(self, other):
         return Interval.idivide(self._process_other(other), self)
 
-    def __float__(self):
-        return self.lv + Interval.iwidth(self)/2
+    # Arithmetic operations.
+    # Proper arguments are Intervals.
 
     @staticmethod
     def iwidth(interval):
-        assert isinstance(interval, Interval)
         set_rounding(TOWARD_PLUS_INF)
         ret = interval.rv - interval.lv
         set_rounding(TO_NEAREST)
@@ -134,8 +156,6 @@ class Interval:
 
     @staticmethod
     def iadd(lint, rint):
-        assert isinstance(lint, Interval)
-        assert isinstance(rint, Interval)
         ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
         ret.lv = lint.lv + rint.lv
@@ -147,8 +167,6 @@ class Interval:
 
     @staticmethod
     def isubtract(lint, rint):
-        assert isinstance(lint, Interval)
-        assert isinstance(rint, Interval)
         ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
         ret.lv = lint.lv - rint.rv
@@ -160,8 +178,6 @@ class Interval:
 
     @staticmethod
     def imultiply(lint, rint):
-        assert isinstance(lint, Interval)
-        assert isinstance(rint, Interval)
         ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
         ret.lv = min(lint.lv*rint.lv, lint.lv*rint.rv, lint.rv*rint.lv, lint.rv*rint.rv)
@@ -173,8 +189,6 @@ class Interval:
 
     @staticmethod
     def idivide(lint, rint):
-        assert isinstance(lint, Interval)
-        assert isinstance(rint, Interval)
         if rint.lv <= 0.0 <= rint.rv:
             raise ZeroDivisionError("Division by an interval containing 0.")
         ret = Interval()
@@ -185,6 +199,10 @@ class Interval:
         set_rounding(TO_NEAREST)
         ret.strict = lint.strict or rint.strict
         return ret
+
+    # todo: sin, cos, exp, tan...
+
+    # Some constants.
 
     @staticmethod
     def ipi(strict=False):
@@ -202,8 +220,13 @@ class Interval:
     def ione(strict=False):
         return Interval(value='1', strict=strict)
 
+    # Interval representation as float and string.
+
     def __str__(self):
         return "<{0:0.20f}; {1:0.20f}>".format(self.lv, self.rv)
 
     def __repr__(self):
         return self.__str__()
+
+    def __float__(self):
+        return self.lv + Interval.iwidth(self) / 2
