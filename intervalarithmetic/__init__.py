@@ -13,36 +13,47 @@ TO_NEAREST = None
 
 def _init_libm():
     """
-    Load libm (fenv.h) rounding mode control functions.
+    Load glibc libm (fenv.h) rounding mode control functions.
     """
     global TO_ZERO, TOWARD_MINUS_INF, TOWARD_PLUS_INF, TO_NEAREST
     global set_rounding, get_rounding
     from ctypes import cdll
     from ctypes.util import find_library
     libm = cdll.LoadLibrary(find_library('m'))
-    set_rounding, get_rounding = libm.fesetround, libm.fegetround
-    # todo: check if correct arguments for x86_64 architecture
-    # x86
-    TO_ZERO = 0xc00
-    TOWARD_MINUS_INF = 0x400
-    TOWARD_PLUS_INF = 0x800
-    TO_NEAREST = 0
-    # todo: check if works on linux
+    assert libm.fegetround
+    assert libm.fesetround
+    get_rounding = lambda: libm.fegetround()
+    set_rounding = lambda mode: True if libm.fesetround(mode) == 0 else False
+    # Macros from fenv.h are architecture dependant.
+    import struct
+    bit = 8 * struct.calcsize("P")
+    assert bit in (32, 64)
+    if bit == 32:
+        # x86:
+        TO_ZERO, TOWARD_PLUS_INF, TOWARD_MINUS_INF, TO_NEAREST = 0x0c00, 0x0800, 0x0400, 0x0000
+        # FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD, FE_TONEAREST
+    else:
+        # ia64:
+        TO_ZERO, TOWARD_PLUS_INF, TOWARD_MINUS_INF, TO_NEAREST = 3, 2, 1, 0
+        # FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD, FE_TONEAREST
+
 
 def _init_msvcrt():
     """
     Load MS Visual Studio C Run-Time Library (float.h) rounding mode control functions.
+    https://msdn.microsoft.com/library/e9b52ceh.aspx
     """
     global TO_ZERO, TOWARD_MINUS_INF, TOWARD_PLUS_INF, TO_NEAREST
     global set_rounding, get_rounding
     from ctypes import cdll
     msvcrt = cdll.msvcrt
-    set_rounding = lambda mode: msvcrt._controlfp(mode, 0x300)
-    get_rounding = lambda: msvcrt._controlfp(0, 0)
-    TO_ZERO = 0x300
-    TOWARD_MINUS_INF = 0x100
-    TOWARD_PLUS_INF = 0x200
-    TO_NEAREST = 0
+    assert msvcrt._controlfp
+    mask = 0x0300  # _MCW_RC
+    set_rounding = lambda mode: True if msvcrt._controlfp(mode, mask) & mask == mode else False
+    get_rounding = lambda: msvcrt._controlfp(0, 0) & mask
+    TO_ZERO, TOWARD_PLUS_INF, TOWARD_MINUS_INF, TO_NEAREST = 0x0300, 0x0200, 0x0100, 0x000
+    # _RC_CHOP,  _RC_UP, _RC_DOWN, _RC_NEAR
+
 
 for _init_rounding in _init_libm, _init_msvcrt:
     try:
