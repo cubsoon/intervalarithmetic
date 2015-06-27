@@ -69,7 +69,7 @@ else:
 
 class Interval:
 
-    def __init__(self, left=None, right=None, value=None, strict=False):
+    def __init__(self, value_1, value_2=None, strict=False):
         # use Decimal as exact value holder (because of arbitrary precision)
         from decimal import Decimal
         # nextafter(x, y) returns next machine number after x in direction of y
@@ -78,8 +78,8 @@ class Interval:
         self.strict = strict
 
         # creating interval from middle value
-        if value and (not left) and (not right):
-            exact = Decimal(value)
+        if not value_2:
+            exact = Decimal(value_1)
             float_repr = Decimal("{0:0.70f}".format(float(exact)))
             if exact == float_repr:
                 self.lv = float(float_repr)
@@ -91,11 +91,11 @@ class Interval:
                 self.rv = float(float_repr)
                 self.lv = nextafter(self.rv, -float('Inf'))
         # creating interval from left and right edge
-        elif (not value) and left and right:
-            exact_left = Decimal(left)
-            exact_right = Decimal(right)
+        else:
+            exact_left = Decimal(value_1)
+            exact_right = Decimal(value_2)
             if exact_left > exact_right:
-                raise ValueError("Left edge greater than right.")
+                exact_left, exact_right = exact_right, exact_left
             float_repr_left = Decimal(float(exact_left))
             float_repr_right = Decimal(float(exact_right))
             if exact_left < float_repr_left:
@@ -106,9 +106,6 @@ class Interval:
                 self.rv = nextafter(float(float_repr_right), float('Inf'))
             else:
                 self.rv = float(float_repr_right)
-        # wrong arguments supplied
-        else:
-            raise ValueError("Wrong arguments passed while creating interval.")
 
     def _process_other(self, other):
         """
@@ -121,7 +118,7 @@ class Interval:
             return other
         elif not self.strict:
             try:
-                return Interval(value=other, strict=self.strict)
+                return Interval(other, strict=self.strict)
             except:
                 raise ValueError("Can't use other value from overloaded operator as numeric.")
         else:
@@ -167,49 +164,45 @@ class Interval:
 
     @staticmethod
     def iadd(lint, rint):
-        ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
-        ret.lv = lint.lv + rint.lv
+        lv = lint.lv + rint.lv
         set_rounding(TOWARD_PLUS_INF)
-        ret.rv = lint.rv + rint.rv
+        rv = lint.rv + rint.rv
         set_rounding(TO_NEAREST)
-        ret.strict = lint.strict or rint.strict
-        return ret
+        strict = lint.strict or rint.strict
+        return Interval(lv, rv, strict=strict)
 
     @staticmethod
     def isubtract(lint, rint):
-        ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
-        ret.lv = lint.lv - rint.rv
+        lv = lint.lv - rint.rv
         set_rounding(TOWARD_PLUS_INF)
-        ret.rv = lint.rv - rint.lv
+        rv = lint.rv - rint.lv
         set_rounding(TO_NEAREST)
-        ret.strict = lint.strict or rint.strict
-        return ret
+        strict = lint.strict or rint.strict
+        return Interval(lv, rv, strict=strict)
 
     @staticmethod
     def imultiply(lint, rint):
-        ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
-        ret.lv = min(lint.lv*rint.lv, lint.lv*rint.rv, lint.rv*rint.lv, lint.rv*rint.rv)
+        lv = min(lint.lv*rint.lv, lint.lv*rint.rv, lint.rv*rint.lv, lint.rv*rint.rv)
         set_rounding(TOWARD_PLUS_INF)
-        ret.rv = max(lint.lv*rint.lv, lint.lv*rint.rv, lint.rv*rint.lv, lint.rv*rint.rv)
+        rv = max(lint.lv*rint.lv, lint.lv*rint.rv, lint.rv*rint.lv, lint.rv*rint.rv)
         set_rounding(TO_NEAREST)
-        ret.strict = lint.strict or rint.strict
-        return ret
+        strict = lint.strict or rint.strict
+        return Interval(lv, rv, strict=strict)
 
     @staticmethod
     def idivide(lint, rint):
         if rint.lv <= 0.0 <= rint.rv:
             raise ZeroDivisionError("Division by an interval containing 0.")
-        ret = Interval()
         set_rounding(TOWARD_MINUS_INF)
-        ret.lv = min(lint.lv/rint.lv, lint.lv/rint.rv, lint.rv/rint.lv, lint.rv/rint.rv)
+        lv = min(lint.lv/rint.lv, lint.lv/rint.rv, lint.rv/rint.lv, lint.rv/rint.rv)
         set_rounding(TOWARD_PLUS_INF)
-        ret.rv = max(lint.lv/rint.lv, lint.lv/rint.rv, lint.rv/rint.lv, lint.rv/rint.rv)
+        rv = max(lint.lv/rint.lv, lint.lv/rint.rv, lint.rv/rint.lv, lint.rv/rint.rv)
         set_rounding(TO_NEAREST)
-        ret.strict = lint.strict or rint.strict
-        return ret
+        strict = lint.strict or rint.strict
+        return Interval(lv, rv, strict=strict)
 
     # todo: sin, cos, exp, tan...
 
@@ -217,19 +210,19 @@ class Interval:
 
     @staticmethod
     def ipi(strict=False):
-        return Interval(value='3.1415926535897932384626433832795028841972', strict=strict)
+        return Interval('3.1415926535897932384626433832795028841972', strict=strict)
 
     @staticmethod
     def ie(strict=False):
-        return Interval(value='2.7182818284590452353602874713526624977572', strict=strict)
+        return Interval('2.7182818284590452353602874713526624977572', strict=strict)
 
     @staticmethod
     def izero(strict=False):
-        return Interval(value='0', strict=strict)
+        return Interval('0', strict=strict)
 
     @staticmethod
     def ione(strict=False):
-        return Interval(value='1', strict=strict)
+        return Interval('1', strict=strict)
 
     # Interval representation as float and string.
 
@@ -237,7 +230,7 @@ class Interval:
         return "<{0:0.20f}; {1:0.20f}>".format(self.lv, self.rv)
 
     def __repr__(self):
-        return self.__str__()
+        return "Interval({0:0.20f}, {1:0.20f}, strict={2})".format(self.lv, self.rv, self.strict)
 
     def __float__(self):
         return self.lv + Interval.iwidth(self) / 2

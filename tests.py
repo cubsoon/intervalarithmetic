@@ -36,5 +36,15 @@ class RoundingModeTestCase(unittest.TestCase):
         self.assertEqual(tz, mi)
         self.assertIn(tn, (tz, pi, mi))
 
+
+class IntervalTestCase(unittest.TestCase):
+
+    def test_repr_1(self):
+        a = Interval(1000.1, strict=True)
+        b = eval(a.__repr__())
+        self.assertEqual(a.lv, b.lv)
+        self.assertEqual(a.rv, b.rv)
+        self.assertEqual(a.strict, b.strict)
+
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)

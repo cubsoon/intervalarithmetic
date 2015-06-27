@@ -19,7 +19,7 @@ def read_interval_left_right(generator):
 
 def read_interval(generator):
     value = next(generator)
-    return Interval(value=value)
+    return Interval(value)
 
 def read_float(generator):
     value = next(generator)
