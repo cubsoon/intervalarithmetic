@@ -39,12 +39,62 @@ class RoundingModeTestCase(unittest.TestCase):
 
 class IntervalTestCase(unittest.TestCase):
 
-    def test_repr_1(self):
-        a = Interval(1000.1, strict=True)
+    def test_repr(self):
+        a = Interval('1000.112412341234123412341234')
         b = eval(a.__repr__())
         self.assertEqual(a.lv, b.lv)
         self.assertEqual(a.rv, b.rv)
-        self.assertEqual(a.strict, b.strict)
+
+    def test_strict(self):
+        def check_op():
+            a = Interval('0.1')
+            return a + 1
+        Interval.strict_operators = True
+        self.assertRaises(ValueError, check_op)
+        Interval.strict_operators = False
+        a = check_op()
+
+    def test_comparison_eq(self):
+        a = Interval('1')
+        b = Interval('1')
+        Interval.certain_comparisons = True
+        self.assertTrue(a == 1)
+        self.assertTrue(1 == a)
+        self.assertTrue(a == b)
+        a = Interval('1', '3')
+        b = Interval('2', '4')
+        self.assertFalse(a == b)
+        Interval.certain_comparisons = False
+        self.assertTrue(a == b)
+        a = Interval('1', '2')
+        b = Interval('3', '4')
+        self.assertFalse(a == b)
+        Interval.certain_comparisons = True
+        self.assertFalse(a == b)
+
+    def test_comparison_ne(self):
+        a = Interval('1')
+        b = Interval('1')
+        Interval.certain_comparisons = True
+        self.assertFalse(a != 1)
+        self.assertFalse(1 != a)
+        self.assertFalse(a != b)
+        Interval.certain_comparisons = False
+        self.assertFalse(a != 1)
+        self.assertFalse(1 != a)
+        self.assertFalse(a != b)
+        a = Interval('1', '2')
+        b = Interval('3', '4')
+        Interval.certain_comparisons = True
+        self.assertTrue(a != b)
+        Interval.certain_comparisons = False
+        self.assertTrue(a != b)
+        a = Interval('1', '3')
+        b = Interval('2', '4')
+        Interval.certain_comparisons = True
+        self.assertFalse(a != b)
+        Interval.certain_comparisons = False
+        self.assertTrue(a != b)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

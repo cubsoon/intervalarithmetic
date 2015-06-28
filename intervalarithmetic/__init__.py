@@ -69,13 +69,14 @@ else:
 
 class Interval:
 
-    def __init__(self, value_1, value_2=None, strict=False):
+    strict_operators = False
+    certain_comparisons = True
+
+    def __init__(self, value_1, value_2=None):
         # use Decimal as exact value holder (because of arbitrary precision)
         from decimal import Decimal
         # nextafter(x, y) returns next machine number after x in direction of y
         from numpy import nextafter
-
-        self.strict = strict
 
         # creating interval from middle value
         if not value_2:
@@ -116,9 +117,9 @@ class Interval:
         """
         if isinstance(other, Interval):
             return other
-        elif not self.strict:
+        elif not self.strict_operators:
             try:
-                return Interval(other, strict=self.strict)
+                return Interval(other)
             except:
                 raise ValueError("Can't use other value from overloaded operator as numeric.")
         else:
@@ -152,6 +153,12 @@ class Interval:
     def __rtruediv__(self, other):
         return Interval.idivide(self._process_other(other), self)
 
+    def __eq__(self, other):
+        return Interval.iequal(self, self._process_other(other), certainly=self.certain_comparisons)
+
+    def __ne__(self, other):
+        return Interval.inotequal(self, self._process_other(other), certainly=self.certain_comparisons)
+
     # Arithmetic operations.
     # Proper arguments are Intervals.
 
@@ -169,8 +176,7 @@ class Interval:
         set_rounding(TOWARD_PLUS_INF)
         rv = lint.rv + rint.rv
         set_rounding(TO_NEAREST)
-        strict = lint.strict or rint.strict
-        return Interval(lv, rv, strict=strict)
+        return Interval(lv, rv)
 
     @staticmethod
     def isubtract(lint, rint):
@@ -179,8 +185,7 @@ class Interval:
         set_rounding(TOWARD_PLUS_INF)
         rv = lint.rv - rint.lv
         set_rounding(TO_NEAREST)
-        strict = lint.strict or rint.strict
-        return Interval(lv, rv, strict=strict)
+        return Interval(lv, rv)
 
     @staticmethod
     def imultiply(lint, rint):
@@ -189,8 +194,7 @@ class Interval:
         set_rounding(TOWARD_PLUS_INF)
         rv = max(lint.lv*rint.lv, lint.lv*rint.rv, lint.rv*rint.lv, lint.rv*rint.rv)
         set_rounding(TO_NEAREST)
-        strict = lint.strict or rint.strict
-        return Interval(lv, rv, strict=strict)
+        return Interval(lv, rv)
 
     @staticmethod
     def idivide(lint, rint):
@@ -201,28 +205,41 @@ class Interval:
         set_rounding(TOWARD_PLUS_INF)
         rv = max(lint.lv/rint.lv, lint.lv/rint.rv, lint.rv/rint.lv, lint.rv/rint.rv)
         set_rounding(TO_NEAREST)
-        strict = lint.strict or rint.strict
-        return Interval(lv, rv, strict=strict)
+        return Interval(lv, rv)
 
     # todo: sin, cos, exp, tan...
+
+    @staticmethod
+    def iequal(lint, rint, certainly=True):
+        if certainly:
+            return lint.lv == lint.rv == rint.lv == rint.rv
+        else:
+            return lint.rv >= rint.lv and lint.lv <= rint.rv or rint.rv >= lint.lv and rint.lv <= lint.rv
+
+    @staticmethod
+    def inotequal(lint, rint, certainly=True):
+        if certainly:
+            return not Interval.iequal(lint, rint, certainly=False)
+        else:
+            return not Interval.iequal(lint, rint, certainly=True)
 
     # Some constants.
 
     @staticmethod
-    def ipi(strict=False):
-        return Interval('3.1415926535897932384626433832795028841972', strict=strict)
+    def ipi():
+        return Interval('3.1415926535897932384626433832795028841972')
 
     @staticmethod
-    def ie(strict=False):
-        return Interval('2.7182818284590452353602874713526624977572', strict=strict)
+    def ie():
+        return Interval('2.7182818284590452353602874713526624977572')
 
     @staticmethod
-    def izero(strict=False):
-        return Interval('0', strict=strict)
+    def izero():
+        return Interval('0')
 
     @staticmethod
-    def ione(strict=False):
-        return Interval('1', strict=strict)
+    def ione():
+        return Interval('1')
 
     # Interval representation as float and string.
 
@@ -230,7 +247,7 @@ class Interval:
         return "<{0:0.20f}; {1:0.20f}>".format(self.lv, self.rv)
 
     def __repr__(self):
-        return "Interval({0:0.20f}, {1:0.20f}, strict={2})".format(self.lv, self.rv, self.strict)
+        return "Interval({0:0.20f}, {1:0.20f})".format(self.lv, self.rv)
 
     def __float__(self):
         return self.lv + Interval.iwidth(self) / 2
